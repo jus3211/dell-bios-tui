@@ -109,16 +109,46 @@ install_deps() {
 }
 
 install_libssl1() {
-    info "libssl1.1 not found in repos — fetching from Debian 11 security archive"
+    info "libssl1.1 not found in repos — fetching from Debian archive"
 
-    local libssl_url="http://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+    # Try multiple mirrors in order — Dell cctk requires libssl1.1 (OpenSSL 1.x)
     local libssl_deb="$WORK_DIR/libssl1.1.deb"
+    local urls=(
+        "http://ftp.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+        "http://ftp.us.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+        "http://ftp.nl.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+        "http://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl1.1_1.1.1w-0+deb11u4_amd64.deb"
+        "http://archive.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+    )
 
-    wget -q --show-progress -O "$libssl_deb" "$libssl_url" 2>&1 | tee -a "$LOG" \
-        || die "Failed to download libssl1.1"
+    local downloaded=false
+    for url in "${urls[@]}"; do
+        info "Trying: $url"
+        if wget -q --timeout=15 --tries=2 -O "$libssl_deb" "$url" >> "$LOG" 2>&1; then
+            # Verify it looks like a valid deb (not an HTML error page)
+            if file "$libssl_deb" 2>/dev/null | grep -q "Debian\|ar archive"; then
+                ok "Downloaded from: $url"
+                downloaded=true
+                break
+            else
+                warn "Got invalid file from $url — trying next mirror"
+                rm -f "$libssl_deb"
+            fi
+        else
+            warn "Failed to reach $url — trying next mirror"
+            rm -f "$libssl_deb"
+        fi
+    done
+
+    if ! $downloaded; then
+        err "All mirrors failed. Try manually:"
+        err "  wget http://ftp.debian.org/debian/pool/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+        err "  sudo dpkg -i libssl1.1_1.1.1w-0+deb11u1_amd64.deb"
+        die "Could not download libssl1.1"
+    fi
 
     dpkg -i "$libssl_deb" >> "$LOG" 2>&1 \
-        || die "Failed to install libssl1.1"
+        || { apt-get install -f -y >> "$LOG" 2>&1 || die "Failed to install libssl1.1"; }
 
     ok "libssl1.1 installed"
 }
@@ -209,26 +239,21 @@ install_tui() {
     hdr "Installing BIOS TUI script"
 
     local tui_source=""
+    local repo_raw="https://raw.githubusercontent.com/jus3211/dell-bios-tui/main/cctk-tui.sh"
 
-    # Is this script running from the same directory as cctk-tui.sh?
+    # Prefer a local copy next to the installer (e.g. git clone)
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [[ -f "$script_dir/cctk-tui.sh" ]]; then
         tui_source="$script_dir/cctk-tui.sh"
         info "Found cctk-tui.sh next to installer: $tui_source"
+        cp "$tui_source" "$TUI_INSTALL_PATH"
     else
-        # Ask user where it is
-        echo ""
-        warn "cctk-tui.sh not found next to this installer."
-        read -rp "Path to cctk-tui.sh [or press Enter to skip]: " tui_source
-        if [[ -z "$tui_source" ]]; then
-            warn "Skipping TUI install — copy cctk-tui.sh to $TUI_INSTALL_PATH manually"
-            return
-        fi
-        [[ ! -f "$tui_source" ]] && die "File not found: $tui_source"
+        # Download from GitHub
+        info "Downloading cctk-tui.sh from GitHub..."
+        curl -fsSL "$repo_raw" -o "$TUI_INSTALL_PATH" 2>&1 | tee -a "$LOG" \
+            || die "Failed to download cctk-tui.sh from $repo_raw"
     fi
-
-    cp "$tui_source" "$TUI_INSTALL_PATH"
     chmod +x "$TUI_INSTALL_PATH"
     ok "TUI installed to $TUI_INSTALL_PATH"
     info "Run with: sudo cctk-tui"
