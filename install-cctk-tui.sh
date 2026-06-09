@@ -16,13 +16,10 @@ LOG="/tmp/cctk-install.log"
 # Dell's download page for Command Configure
 DELL_DCC_URL="https://www.dell.com/support/kbdoc/en-us/000178000/dell-command-configure"
 
-# Known direct download URLs (update if Dell changes them)
-# Format: "label|url"
-KNOWN_PACKAGES=(
-    "v5.2 Ubuntu 22/24 amd64|https://dl.dell.com/FOLDER11971237M/1/command-configure_5.2.0-5.ubuntu22_amd64.tar.gz"
-    "v5.1 Ubuntu 20/22 amd64|https://dl.dell.com/FOLDER11560885M/1/command-configure_5.1.0-6.ubuntu20_amd64.tar.gz"
-    "v4.11 Ubuntu 22 amd64|https://dl.dell.com/FOLDER10469726M/1/command-configure_4.11.0-6.ubuntu22_amd64.tar.gz"
-)
+# Packages hosted in the repo (raw GitHub URLs)
+REPO_RAW="https://github.com/jus3211/dell-bios-tui/raw/main"
+HAPI_DEB="srvadmin-hapi_9.5.0_amd64.deb"
+CCTK_DEB="command-configure_5.1.0-6.ubuntu22_amd64.deb"
 
 # ── colours ───────────────────────────────────────────────────────────────────
 
@@ -167,60 +164,23 @@ install_cctk() {
         [[ "${confirm,,}" == "y" ]] || { ok "Skipping cctk install"; return; }
     fi
 
-    # Let user pick package version
-    echo ""
-    echo -e "${BOLD}Available packages:${RESET}"
-    local i=1
-    for entry in "${KNOWN_PACKAGES[@]}"; do
-        local label="${entry%%|*}"
-        echo "  $i) $label"
-        ((i++))
-    done
-    echo "  $i) Enter custom URL"
-    echo "  $((i+1)) Open Dell support page (then enter URL manually)"
-    echo ""
+    local hapi_path="$WORK_DIR/$HAPI_DEB"
+    local cctk_path="$WORK_DIR/$CCTK_DEB"
 
-    local choice url=""
-    read -rp "Select package [1]: " choice
-    choice="${choice:-1}"
+    # Download HAPI deb
+    info "Downloading HAPI driver..."
+    wget -q --show-progress -O "$hapi_path" "$REPO_RAW/$HAPI_DEB" 2>&1 | tee -a "$LOG"         || die "Failed to download $HAPI_DEB from repo"
 
-    if [[ "$choice" -ge 1 && "$choice" -le ${#KNOWN_PACKAGES[@]} ]] 2>/dev/null; then
-        url="${KNOWN_PACKAGES[$((choice-1))]##*|}"
-    elif [[ "$choice" -eq $i ]]; then
-        read -rp "Enter direct download URL (.tar.gz): " url
-        [[ -z "$url" ]] && die "No URL provided"
-    elif [[ "$choice" -eq $((i+1)) ]]; then
-        echo ""
-        info "Open this URL in a browser, find the Linux .tar.gz download link,"
-        info "and paste it here: $DELL_DCC_URL"
-        echo ""
-        read -rp "Paste direct .tar.gz URL: " url
-        [[ -z "$url" ]] && die "No URL provided"
-    else
-        die "Invalid selection"
-    fi
+    # Download cctk deb
+    info "Downloading Dell Command Configure..."
+    wget -q --show-progress -O "$cctk_path" "$REPO_RAW/$CCTK_DEB" 2>&1 | tee -a "$LOG"         || die "Failed to download $CCTK_DEB from repo"
 
-    info "Downloading: $url"
-    local tarball="$WORK_DIR/command-configure.tar.gz"
-    wget -q --show-progress -O "$tarball" "$url" 2>&1 | tee -a "$LOG" \
-        || die "Download failed. Check URL or network connectivity."
-
-    info "Extracting..."
-    tar -zxf "$tarball" -C "$WORK_DIR" >> "$LOG" 2>&1 \
-        || die "Failed to extract tarball"
-
-    # Install debs in the correct order
+    # Install in correct order: HAPI first, then cctk
     info "Installing HAPI driver..."
-    local hapi_deb
-    hapi_deb=$(find "$WORK_DIR" -name "srvadmin-hapi*.deb" | head -1)
-    [[ -z "$hapi_deb" ]] && die "srvadmin-hapi .deb not found in package"
-    dpkg -i "$hapi_deb" >> "$LOG" 2>&1 || apt-get install -f -y >> "$LOG" 2>&1
+    dpkg -i "$hapi_path" >> "$LOG" 2>&1 || apt-get install -f -y >> "$LOG" 2>&1
 
     info "Installing Dell Command Configure..."
-    local cctk_deb
-    cctk_deb=$(find "$WORK_DIR" -name "command-configure*.deb" | head -1)
-    [[ -z "$cctk_deb" ]] && die "command-configure .deb not found in package"
-    dpkg -i "$cctk_deb" >> "$LOG" 2>&1 || true
+    dpkg -i "$cctk_path" >> "$LOG" 2>&1 || true
     apt-get install -f -y >> "$LOG" 2>&1
 
     # Verify
