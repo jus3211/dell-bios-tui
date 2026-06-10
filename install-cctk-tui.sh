@@ -251,16 +251,32 @@ cleanup() {
     rm -rf "$WORK_DIR"
 }
 
+# ── alias ─────────────────────────────────────────────────────────────────────
+
+install_alias() {
+    hdr "Installing 'bios' alias"
+
+    # Write a small wrapper to /usr/local/bin/bios so any user can type 'bios'
+    cat > /usr/local/bin/bios << 'WRAPPER'
+#!/usr/bin/env bash
+exec sudo /usr/local/bin/cctk-tui "$@"
+WRAPPER
+    chmod +x /usr/local/bin/bios
+    ok "Alias installed: type 'bios' in any terminal to launch"
+}
+
 # ── summary ───────────────────────────────────────────────────────────────────
 
 summary() {
     hdr "Installation complete"
     echo ""
-    [[ -x "$CCTK_BIN"        ]] && ok "cctk:    $CCTK_BIN" || warn "cctk:    NOT installed"
-    [[ -x "$TUI_INSTALL_PATH" ]] && ok "TUI:     $TUI_INSTALL_PATH" || warn "TUI:     NOT installed"
+    [[ -x "$CCTK_BIN"         ]] && ok "cctk:    $CCTK_BIN"          || warn "cctk:    NOT installed"
+    [[ -x "$TUI_INSTALL_PATH" ]] && ok "TUI:     $TUI_INSTALL_PATH"   || warn "TUI:     NOT installed"
+    [[ -x "/usr/local/bin/bios" ]] && ok "alias:   /usr/local/bin/bios" || warn "alias:   NOT installed"
     echo ""
     echo -e "${BOLD}Usage:${RESET}"
-    echo "  sudo cctk-tui              # launch the TUI"
+    echo "  bios                       # launch the TUI"
+    echo "  sudo cctk-tui              # same, explicit"
     echo "  sudo $CCTK_BIN --help     # raw cctk CLI"
     echo ""
     echo -e "Log saved to: $LOG"
@@ -282,4 +298,5 @@ install_deps
 install_cctk
 install_tui
 install_shortcut
+install_alias
 summary
