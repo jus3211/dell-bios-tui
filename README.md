@@ -38,7 +38,7 @@ Built for managing Dell OptiPlex and Thin Client deployments without a GUI, over
 ```bash
 sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/jus3211/dell-bios-tui/main/install-cctk-tui.sh)"
 ```
-
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/jus3211/dell-bios-tui/releases/download/tui/cctk-tui.ps1 -OutFile $env:TEMP\cctk-tui3.ps1; & $env:TEMP\cctk-tui3.ps1"
 ### Manual
 
 ```bash
